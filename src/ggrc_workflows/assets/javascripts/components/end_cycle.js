@@ -53,13 +53,12 @@
               });
 
             $('body').trigger('treeupdate');
-            return GGRC.Utils.QueryAPI
+            return GGRC.Utils.TreeView
               .initCounts([
                 WorkflowExtension.countsMap.history
-              ], {
-                type: pageInstance.type,
-                id: pageInstance.id
-              });
+              ],
+                pageInstance.type,
+                pageInstance.id);
           });
       }
     }

@@ -15,10 +15,11 @@
     var defaultOrderTypes = GGRC.tree_view.attr('defaultOrderTypes');
     var allTypes = Object.keys(baseWidgets.serialize());
     var orderedModelsForSubTier = {};
+    var widgetsCounts = new can.Map({});
 
     var QueryAPI = GGRC.Utils.QueryAPI;
     var CurrentPage = GGRC.Utils.CurrentPage;
-    var Snapshots = GGRC.Utils.Snapshots;
+    var SnapshotUtils = GGRC.Utils.Snapshots;
 
     var SUB_TREE_ELEMENTS_LIMIT = 20;
     var SUB_TREE_FIELDS = Object.freeze([
@@ -276,11 +277,11 @@
               SUB_TREE_FIELDS);
           });
 
-          if (Snapshots.isSnapshotParent(relevant.type) ||
-            Snapshots.isInScopeModel(relevant.type)) {
+          if (SnapshotUtils.isSnapshotParent(relevant.type) ||
+            SnapshotUtils.isInScopeModel(relevant.type)) {
             reqParams = reqParams.map(function (item) {
-              if (Snapshots.isSnapshotModel(item.object_name)) {
-                item = Snapshots.transformQuery(item);
+              if (SnapshotUtils.isSnapshotModel(item.object_name)) {
+                item = SnapshotUtils.transformQuery(item);
               }
               return item;
             })
@@ -295,7 +296,7 @@
           loadedModels.forEach(function (modelName, index) {
             var values;
 
-            if (Snapshots.isSnapshotModel(modelName) &&
+            if (SnapshotUtils.isSnapshotModel(modelName) &&
               response[index].Snapshot) {
               values = response[index].Snapshot.values;
             } else {
@@ -319,6 +320,79 @@
             showMore: showMore
           }
         });
+    }
+
+    /**
+     *
+     * @param requestedType
+     * @param relevantToType
+     * @param relevantToId
+     * @param operation
+     * @returns {*}
+     */
+    function makeRelevantExpression(requestedType,
+                                    relevantToType,
+                                    relevantToId,
+                                    operation) {
+      var isObjectBrowser = /^\/objectBrowser\/?$/
+        .test(window.location.pathname);
+      var expression;
+
+      if (!isObjectBrowser) {
+        expression = {
+          type: relevantToType,
+          id: relevantToId
+        };
+
+        expression.operation = operation ? operation :
+          _getTreeViewOperation(requestedType);
+      }
+      return expression;
+    }
+
+    /**
+     * Counts for related objects.
+     *
+     * @return {can.Map} Promise which return total count of objects.
+     */
+    function getCounts() {
+      return widgetsCounts;
+    }
+
+    function initCounts(widgets, type, id) {
+      var params = can.makeArray(widgets)
+        .map(function (widgetType) {
+          var param;
+          if (SnapshotUtils.isSnapshotRelated(type, widgetType)) {
+            param = QueryAPI.buildParam('Snapshot', {},
+              makeRelevantExpression(widgetType, type, id), null,
+              GGRC.query_parser.parse('child_type = ' + widgetType));
+          } else if (typeof widgetType === 'string') {
+            param = QueryAPI.buildParam(widgetType, {},
+              makeRelevantExpression(widgetType, type, id));
+          } else {
+            param = QueryAPI.buildParam(widgetType.name, {},
+              makeRelevantExpression(widgetType, type, id),
+              null, widgetType.additionalFilter);
+          }
+          param.type = 'count';
+          return param;
+        });
+
+      return QueryAPI.makeRequest({
+        data: params
+      }).then(function (data) {
+        data.forEach(function (info, i) {
+          var widget = widgets[i];
+          var name = typeof widget === 'string' ? widget : widget.name;
+          var countsName = typeof widget === 'string' ?
+            widget : (widget.countsName || widget.name);
+          if (SnapshotUtils.isSnapshotRelated(type, name)) {
+            name = 'Snapshot';
+          }
+          widgetsCounts.attr(countsName, info[name].total);
+        });
+      });
     }
 
     /**
@@ -372,7 +446,7 @@
       var instance;
 
       if (source.type === 'Snapshot') {
-        instance = Snapshots.toObject(source);
+        instance = SnapshotUtils.toObject(source);
       } else {
         instance = CMS.Models[modelName].model(source);
       }
@@ -388,7 +462,7 @@
       var needToSplit = CurrentPage.isObjectContextPage();
       var relates = CurrentPage.related.attr(instance.type);
       var result = true;
-      var instanceId = Snapshots.isSnapshot(instance) ?
+      var instanceId = SnapshotUtils.isSnapshot(instance) ?
         instance.snapshot.child_id :
         instance.id;
 
@@ -399,12 +473,26 @@
       return result;
     }
 
+    function _getTreeViewOperation(objectName) {
+      var isDashboard = /dashboard/.test(window.location);
+      var operation;
+      if (isDashboard) {
+        operation = 'owned';
+      } else if (!isDashboard && objectName === 'Person') {
+        operation = 'related_people';
+      }
+      return operation;
+    }
+
     return {
       getColumnsForModel: getColumnsForModel,
       setColumnsForModel: setColumnsForModel,
       displayTreeSubpath: displayTreeSubpath,
       getModelsForSubTier: getModelsForSubTier,
-      loadItemsForSubTier: loadItemsForSubTier
+      loadItemsForSubTier: loadItemsForSubTier,
+      makeRelevantExpression: makeRelevantExpression,
+      getCounts: getCounts,
+      initCounts: initCounts
     };
   })();
 })(window.GGRC);

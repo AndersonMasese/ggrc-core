@@ -210,10 +210,7 @@
     });
 
     if (!isAssessmentsView && GGRC.Utils.CurrentPage.getPageType() !== 'Workflow') {
-      GGRC.Utils.QueryAPI.initCounts(widgetModels, {
-        type: instance.type,
-        id: instance.id
-      });
+      GGRC.Utils.TreeView.initCounts(widgetModels, instance.type, instance.id);
     }
 
     $area.cms_controllers_page_object(can.extend({
